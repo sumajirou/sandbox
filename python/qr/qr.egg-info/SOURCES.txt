@@ -1,0 +1,8 @@
+README.rst
+setup.py
+qr/__init__.py
+qr.egg-info/PKG-INFO
+qr.egg-info/SOURCES.txt
+qr.egg-info/dependency_links.txt
+qr.egg-info/requires.txt
+qr.egg-info/top_level.txt
