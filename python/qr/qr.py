@@ -1,8 +1,116 @@
-import random
+# 参考URL
+# https://www.swetake.com/qrcode/qr1.html
+# (引用ここから)
+# 1.2　ＱＲコードで符号化できる文字
+# ・数字(0-9)
+# 　３文字を10bitで表現します。
+# 　理論上最大7089文字を格納できます。
+# ・英数字(0-9A-Z $%*+-./:)の４５文字
+# 　２文字を11bitで表現します。
+# 　理論上最大4296文字を格納できます。
+# ・８ビットバイトデータ
+# 　理論上最大2953文字を格納できます。
+# ・漢字データ
+# 　漢字１文字を13bitで表現します。
+# 　理論上最大1817文字を格納できます。
+# 1.3　ＱＲコードで選択できる誤り訂正レベル
+# 　ＱＲコードではデータの一部が読み取れなかったり黒白を誤って 読んでしまった場合でもその誤りを訂正するために冗長コードを 付加しています。
+# 　誤り訂正レベルはＬ、Ｍ、Ｑ、Ｈの４段階に選択でき、復元能力はそれぞれ約7,15,25,30%です。
+# 1.4　シンボルのバージョン
+# 　ＱＲコードモデル２においてはバージョン１～４０まで存在し、 一辺が２１～１７７モジュールとバージョンが１つあがるごとに４モジュール増加します。
+# 　ちなみに１モジュールとはマトリックスの１マスのことをさします
+#
+# バージョン２以降ではさらにひずみ補正のための位置合わせパターンが使用されます。
+# またバージョン７以降ではバージョンを明記する型番情報が付加されます。
+#
+# サンプルとして ABCDE123 というデータをバージョン１誤り訂正レベルＨ(以下1-H型)で 表記することを考えます。
+# (引用ここまで)
 
+# 最初はバージョン1の誤り訂正レベルH(30%)の英数字固定で作ってみる．
+# この場合データコード数9のエラー訂正コード数17．9*8 = 11*6+6よって英数字10文字格納できる．(?
+# いずれオプションで誤り訂正レベルなど指定できるようにする．
+
+
+import random
+import re
 # U+2588	█	Full block
 BLOCK = "██"
 
+# 入力データ
+input_data = "ABCDE123"
+print("input_data:", input_data)
+
+# モード指示子 英数字モードは0010
+mode = '0010'
+print("mode:", mode)
+
+# 文字数指示子 英数字モードは9bitで文字数を表す
+character_count = format(len(input_data), '09b')
+print("character_count:", character_count)
+
+# 2進化データ
+# 　英数字モードではまず表2の通りに各文字を数字化します。
+# 　データを２桁づつ区切って１桁めの文字の上記の表の値を４５倍したものと２桁目の文字の上記の表の値を足します。
+# 　算出された値を11bitの２進数で表記します。なお２桁に満たない場合は残った場合は対応する値を6bitで表記します。
+
+# 2文字ずつ分割
+bindata = re.split('(..)', input_data)
+# 空文字列の削除
+bindata = [x for x in bindata if x]  # => ['AB', 'CD', 'E1', '23']
+print("2文字ずつ分割bindata:", bindata)
+
+# 2文字ないし1文字を2進数に変換する関数
+
+
+def convert_char_to_bin(chars):
+    table = {
+        "0": 0, "1": 1, "2": 2, "3": 3, "4": 4, "5": 5, "6": 6, "7": 7, "8": 8, "9": 9,
+        "A": 10, "B": 11, "C": 12, "D": 13, "E": 14, "F": 15, "G": 16, "H": 17, "I": 18, "J": 19,
+        "K": 20, "L": 21, "M": 22, "N": 23, "O": 24, "P": 25, "Q": 26, "R": 27, "S": 28, "T": 29,
+        "U": 30, "V": 31, "W": 32, "X": 33, "Y": 34, "Z": 35, " ": 36, "$": 37, "%": 38, "*": 39,
+        "+": 40, "-": 41, ".": 42, "/": 43, ":": 44,
+    }
+
+    if len(chars) == 2:
+        num = table[chars[0]] * 45 + table[chars[1]]
+        return format(num, '011b')
+    else:
+        num = table[chars]
+        return format(num, '06b')
+
+
+bindata = ''.join([convert_char_to_bin(chars) for chars in bindata])
+print("bindata:", bindata)
+
+# 終端パターン
+eom = '0000'
+print("eom:", eom)
+
+# コード語変換
+data = mode + character_count + bindata + eom
+print("とりあえずくっつけたdata:", data)
+
+# 8の倍数になるようパディング
+bit_padding_len = (8 - len(data) % 8) % 8
+print("bit_padding_len:", bit_padding_len)
+data = data + '0' * bit_padding_len
+print("8の倍数にパディングdata:", data)
+
+# シンボルのデータコード数に満たない場合は11101100 および 00010001を交互に付加してシンボル容量にあわせる．
+data_code_words = 9
+word_padding_len = data_code_words - len(data) / 8
+while word_padding_len >= 2:
+    data = data + '1110110000010001'
+    word_padding_len -= 2
+
+if word_padding_len == 1:
+    data = data + '11101100'
+
+print("data:", data)
+
+# 8bit毎に区切って数値に変換
+data = [int(x, 2) for x in re.split('(........)', data) if x]
+print("data:", data)
 
 # バージョン1のQRコードのベース
 # 0:白
@@ -72,8 +180,8 @@ qr = """
 qr = ''.join([random.choice('01') if x in '23' else x for x in qr])
 
 # 0と1を正方形になるように変換
-table = str.maketrans({'1': '  ', '0': '██'})
-qr = qr.translate(table)
+block_table = str.maketrans({'1': '  ', '0': '██'})
+qr = qr.translate(block_table)
 
 # 出力
-print(qr)
+# print(qr)
