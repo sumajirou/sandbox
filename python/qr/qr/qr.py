@@ -135,13 +135,30 @@ rsc = reedsolo.RSCodec(17)
 data = list(rsc.encode(data))
 print("data:", data)
 
+# 2進化
+data = ''.join([format(x, '08b') for x in data])
+print("data:", data)
+
+
+def convert_str_to_matrix(buf):
+    lines = buf.split('\n')[:-1]
+    matrix = [list(line) for line in lines]
+    return matrix
+
+
+def convert_matrix_to_str(matrix):
+    lines = [''.join(line) for line in matrix]
+    buf = '\n'.join(lines)
+    return buf
+
 # バージョン1のQRコードのベース
 # 0:白
 # 1:黒
 # 2:形式情報
 # 3:データ・誤り訂正コード
-qr = """
-111111102333301111111
+
+
+qr = """111111102333301111111
 100000102333301000001
 101110102333301011101
 101110102333301011101
@@ -164,10 +181,157 @@ qr = """
 111111102333333333333
 """
 
+matrix = convert_str_to_matrix(qr)
+base_matrix = convert_str_to_matrix(qr)
+# print(matrix)
+
+# データコード部に挿入する
+# matrixの座標
+x, y = 20, 20
+direction = -1  # means 'up'
+pos = 'right'  # or 'left
+
+# 今見てるとこがデータコード部ならデータを入れてiを1すすめる．
+data_len = len(data)
+i = 0
+while i < data_len:
+    if matrix[y][x] == '3':
+        # データコード部なら挿入
+        matrix[y][x] = data[i]
+        i += 1
+
+    if pos == 'right':
+        # 右側のときは左側に移動
+        pos = 'left'
+        x -= 1
+        continue
+
+    pos = 'right'
+    if direction == -1 and y == 0:
+        # 上端の時は左に移動し方向を下に
+        x -= 1
+        direction = 1
+    elif direction == 1 and y == 20:
+        # 下端の時は左に移動し方向を上に
+        x -= 1
+        direction = -1
+    else:
+        # どちらでもないときは右に移動し上下に移動
+        x += 1
+        y += direction
+
+    # 縦のタイミングパターンをスキップする
+    if x == 6:
+        x -= 1
+
+# 出力は文字列で，内部では二次元配列で扱う．
+# 文字列は0と1と改行のみ．末尾に改行あり
+
+
+def print_qrstr(qrstr):
+    table = str.maketrans({'0': '██', '1': '  ', '2': '22', '3': '33'})
+    print(qrstr.translate(table))
+
+
+def add_padding(qrstr):
+    qrstr = '0000' + qrstr.replace('\n', '0000\n0000') + '0000\n'
+    padding_line = ('0' * 29 + '\n') * 4
+    qrstr = padding_line + qrstr + padding_line
+    qrstr = qrstr[:-1]
+    return qrstr
+
+
+print_qrstr(add_padding(convert_matrix_to_str(matrix)))
+# マスクを8種類適用
+# マスクの評価
+# とりあえずマスクパターン011を選択	(i+j) mod 3 = 0
+for y in range(0, 21):
+    for x in range(0, 21):
+        # コード部のみ対象とする
+        if base_matrix[y][x] == '3' and (x+y) % 3 == 0:
+            matrix[y][x] = {'0': '1', '1': '0'}[matrix[y][x]]  # 0と1を反転
+            # matrix[y][x] = str(1 - int(matrix[y][x]))  # 0と1を反転
+
+mask_pattern = '011'
+
+# 形式情報の追加
+error_correction_level = '10'
+
+# 5桁の2進数を受け取り，BCH(15,5)を計算した結果を2進数で返す
+
+
+def bch15_5(x):
+    g = '10100110111'
+    f = x + '0' * 10
+    while int(f, 2) >= int(g, 2):
+        h = g + '0' * (len(f) - len(g))
+        f = format(int(f, 2) ^ int(h, 2), 'b')
+    return format(int(f, 2), '010b')
+
+
+error_correction_bit = bch15_5(error_correction_level + mask_pattern)
+print('error_correction_bit', error_correction_bit)
+
+format_info = error_correction_level + mask_pattern + error_correction_bit
+print('format_info', format_info)
+
+format_info = format(int(format_info, 2) ^ 0b101010000010010, '015b')
+print('format_info', format_info)
+
+
+# 形式情報の挿入
+matrix[8][0:6] = format_info[0:6]
+matrix[8][7] = format_info[7]
+matrix[8][-8:] = format_info[-8:]
+
+matrix = list(map(list, zip(*matrix)))
+
+# 文字列逆転
+format_info = format_info[::-1]
+matrix[8][0:6] = format_info[0:6]
+matrix[8][7:9] = format_info[7:9]
+matrix[8][-7:] = format_info[-7:]
+format_info = format_info[::-1]
+
+matrix = list(map(list, zip(*matrix)))
+
+# matrixを文字列に戻す
+qr = convert_matrix_to_str(matrix)
+
+
+qr = add_padding(qr)
+
+
+print_qrstr(qr)
+
+# 001000000100000111001101010001010010100111011100001011101000000011101100001010101001111101001010110111011111010010101001111011111001011010001010010001101110110101010101111000000110000001001010 11011011 00111101
+#          0101
+#          0010
+#          0110
+#          0101
+#          1011
+#          0011
+
+#          1001
+#          0111
+# 101100 00111000001010
+# 011111 00010101110011
+# 100010 01110101011000
+# 111010 10100101111011
+#          100001000010
+#          101010000100
+#          101111000100
+#          101111011010
+#          111010011100
+#          011100111000
+#          001001011101
+#          001101000000
+
+
 # 余白あり
 # コマンドラインで出力すると黒背景の場合が多いので0を黒，1を白の様に反転して出力させたほうが良い．QRコードはネガポジ反転すると認識されないことが多い．(ソフトによる？)
 # もちろん色反転オプションは付ける．
-qr = """
+"""
 00000000000000000000000000000
 00000000000000000000000000000
 00000000000000000000000000000
@@ -200,11 +364,10 @@ qr = """
 """
 
 # 2と3をランダムに0か1に変換(モック用途)
-qr = ''.join([random.choice('01') if x in '23' else x for x in qr])
+# qr = ''.join([random.choice('01') if x in '23' else x for x in qr])
 
 # 0と1を正方形になるように変換
-block_table = str.maketrans({'1': '  ', '0': '██'})
-qr = qr.translate(block_table)
+
 
 # 出力
 # print(qr)
